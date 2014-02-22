@@ -10,9 +10,9 @@
 #[crate_id = "github.com/mozilla-servo/rust-png#png:0.1"];
 
 #[cfg(test)]
-extern mod extra;
+extern crate test;
 
-extern mod std;
+extern crate std;
 use std::cast;
 use std::io;
 use std::io::File;
@@ -58,7 +58,7 @@ pub extern fn read_data(png_ptr: *ffi::png_struct, data: *mut u8, length: size_t
         let image_data: &mut ImageData = cast::transmute(io_ptr);
         let len = length as uint;
         vec::raw::mut_buf_as_slice(data, len, |buf| {
-            let end_pos = std::num::min(image_data.data.len()-image_data.offset, len);
+            let end_pos = std::cmp::min(image_data.data.len()-image_data.offset, len);
             buf.copy_memory(image_data.data.slice(image_data.offset, image_data.offset+end_pos));
             image_data.offset += end_pos;
         });
@@ -144,7 +144,7 @@ pub fn load_png_from_memory(image: &[u8]) -> Result<Image,~str> {
         let mut image_data = vec::from_elem((width * height * pixel_width) as uint, 0u8);
         let image_buf = image_data.as_mut_ptr();
         let row_pointers: ~[*mut u8] = vec::from_fn(height as uint, |idx| {
-            ptr::mut_offset(image_buf, (((width * pixel_width) as uint) * idx) as int)
+            image_buf.offset((((width * pixel_width) as uint) * idx) as int)
         });
 
         ffi::png_read_image(png_ptr, row_pointers.as_ptr());
@@ -234,7 +234,7 @@ pub fn store_png(img: &Image, path: &Path) -> Result<(),~str> {
 
         let image_buf = img.pixels.as_ptr();
         let row_pointers: ~[*u8] = vec::from_fn(img.height as uint, |idx| {
-            ptr::offset(image_buf, (((img.width * pixel_width) as uint) * idx) as int)
+            image_buf.offset((((img.width * pixel_width) as uint) * idx) as int)
         });
         ffi::png_set_rows(&*png_ptr, info_ptr, row_pointers.as_ptr());
 
@@ -248,8 +248,8 @@ pub fn store_png(img: &Image, path: &Path) -> Result<(),~str> {
 }
 
 #[cfg(test)]
-mod test {
-    use extra::test::{bench, fmt_bench_samples};
+mod tests {
+    use test::BenchHarness;
     use std::io;
     use std::io::File;
     use std::vec;
@@ -293,7 +293,7 @@ mod test {
         load_rgba8("test/store.png", 10, 10);
     }
 
-    fn bench_file_from_memory(file: &'static str, w: u32, h: u32, c: ColorType) {
+    fn bench_file_from_memory(b: &mut BenchHarness, file: &'static str, w: u32, h: u32, c: ColorType) {
         let mut reader = match File::open_mode(&Path::new(file), io::Open, io::Read) {
             Ok(r) => r,
             Err(e) => fail!("could not open '{}': {}", file, e.desc)
@@ -302,7 +302,7 @@ mod test {
             Ok(b) => b,
             Err(e) => fail!(e)
         };
-        let bs = bench::benchmark(|b| b.iter(|| {
+        b.iter(|| {
             match load_png_from_memory(buf) {
                 Err(m) => fail!(m),
                 Ok(image) => {
@@ -311,15 +311,22 @@ mod test {
                     assert_eq!(image.height, h);
                 }
             }
-        }));
-        println!("libpng load '{}': {}", file, fmt_bench_samples(&bs));
+        });
     }
 
-    #[test]
-    fn test_load_perf() {
-        bench_file_from_memory("test/servo-screenshot.png", 831, 624, RGBA8);
-        bench_file_from_memory("test/mozilla-dinosaur-head-logo.png", 1300, 929, RGBA8);
-        bench_file_from_memory("test/rust-huge-logo.png", 4000, 4000, KA8);
+    #[bench]
+    fn test_load_perf_screenshot(b: &mut BenchHarness) {
+        bench_file_from_memory(b, "test/servo-screenshot.png", 831, 624, RGBA8);
+    }
+
+    #[bench]
+    fn test_load_perf_dinosaur(b: &mut BenchHarness) {
+        bench_file_from_memory(b, "test/mozilla-dinosaur-head-logo.png", 1300, 929, RGBA8);
+    }
+
+    #[bench]
+    fn test_load_perf_rust_logo(b: &mut BenchHarness) {
+        bench_file_from_memory(b, "test/rust-huge-logo.png", 4000, 4000, KA8);
     }
 
     #[test]
